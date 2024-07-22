@@ -1,0 +1,21 @@
+[project]
+name = "amaranth-saej2716"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Rob Taylor", email = "rob.taylor@chipflow.io"},
+]
+dependencies = [
+    "amaranth-soc>=0",
+    "amaranth @ git+https://github.com/amaranth-lang/amaranth",
+    "graphviz>=0.20.3",
+    "ok-dmrlib @ git+https://github.com/OK-DMR/ok-dmrlib",
+    "bitarray>=2.9.2",
+]
+requires-python = "==3.12.*"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[tool.pdm]
+distribution = false
