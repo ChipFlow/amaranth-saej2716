@@ -1,4 +1,6 @@
 import random
+import unittest
+
 from dataclasses import dataclass
 from typing import Callable
 
@@ -6,12 +8,14 @@ from bitarray import bitarray
 from bitarray.util import ba2int, int2ba
 
 from amaranth import Signal, Elaboratable, Module
-from amaranth.sim import SimulatorContext
+from amaranth.sim import Simulator, SimulatorContext
+
+# from ..amaranth_saej2716 import SENTReceiver
 
 
-class SENDReceiver(Elaboratable):
+class SENTReceiver(Elaboratable):
     def __init__(self):
-        self.s = Signal(1)
+        self.sent_input = Signal(1)
 
     def elaborate(self):
         m = Module()
@@ -19,8 +23,9 @@ class SENDReceiver(Elaboratable):
 
 
 @dataclass
-class SENDCfg:
+class SENTCfg:
     down_count: int = 4
+    pause_count: int = 0
     random_reserved: bool = False
 
     def valid(self):
@@ -49,7 +54,7 @@ def crc(data):
             return loop(numNibbles, lambda x, i: ba2int(x[i * 4:i * 4 + 4]))
 
 
-class SENDSCNMessage:
+class SENTSCNMessage:
     def __init__(self):
         self._message = None
         self._offset = 0
@@ -86,43 +91,70 @@ class SENDSCNMessage:
         return bit
 
 
-async def simulate_sent(ctx: SimulatorContext, wire: Signal, cfg: SENDCfg, scn: SENDSCNMessage):
-    assert cfg.valid()
+class SENTSender:
+    def __init__(self, ctx: SimulatorContext, cfg: SENTCfg, wire: Signal):
+        assert cfg.valid()
+        self._ctx = ctx
+        self._wire = wire
+        self.cfg = cfg
+        self._scn = None
 
-    async def sent_frame_sync():
-        await ctx.tick()
-        ctx.set(wire, False)
-        await ctx.tick().repeat(cfg.down_count)
-        ctx.set(wire, True)
-        await ctx.tick().repeat(56 - cfg.down_count)
+    @property
+    def set_scn(self, scn: SENTSCNMessage):
+        self._scn = scn
 
-    async def sent_nibble(nibble: int):
+    async def sent_frame_sync(self):
+        await self._ctx.tick(domain="sender")
+        self._ctx.set(self._wire, False)
+        await self._ctx.tick(domain="sender").repeat(self._cfg.down_count)
+        self._ctx.set(self._wire, True)
+        await self._ctx.tick(domain="sender").repeat(56 - self._cfg.down_count)
+
+    async def sent_nibble(self, nibble: int):
         assert nibble > 0 and nibble < 16
-        ctx.set(wire, False)
-        await ctx.tick().repeat(cfg.down_count)
-        ctx.set(wire, True)
-        await ctx.tick().repeat(12 + nibble)
+        self._ctx.set(self._wire, False)
+        await self._ctx.tick(domain="sender").repeat(self._cfg.down_count)
+        self._ctx.set(self._wire, True)
+        await self._ctx.tick(domain="sender").repeat(12 + nibble)
 
-    async def sent_scn_nibble():
+    async def sent_scn_nibble(self):
         nibble = 0
-        if cfg.randome_reserved:
+        if self._cfg.randome_reserved:
             nibble = random.getrandbits(2)
-        await sent_nibble(nibble & 0x3 | scn.bit2 >> 2 | scn.bit3 >> 3)
+        if self._scn:
+            await self.sent_nibble(nibble & 0x3 | self._scn.bit2 >> 2 | self._scn.bit3 >> 3)
+        else:
+            await self.sent_nibble(nibble)
 
-    async def sent_message(message: bytearray, pause: int = 0) -> None:
-        sent_scn_nibble(scn)
+    async def sent_pause(self):
+        await self._ctx.tick(domain="sender").repeat(self._cfg.pause_count)
+
+    async def sent_message(self, message: bytearray) -> None:
+        await self.sent_scn_nibble()
         async for b in message:
-            sent_nibble(b >> 4)
-            sent_nibble(b)
+            self.sent_nibble(b >> 4)
+            self.sent_nibble(b)
         ba = bitarray()
         ba.frombytes(message)
-        sent_nibble(crc(ba))
+        await self.sent_nibble(crc(ba))
+        await self.sent_pause()
 
 
-def main():
-    m = SENDSCNMessage()
-    m.set_message(0x3, 0xB)
+class SENTTestCase(unittest.TestCase):
 
+    def test_basic_message(self):
+        dut = SENTReceiver()
 
-if __name__ == "__main__":
-    main()
+        async def testbench_in(self, ctx: SimulatorContext):
+            cfg = SENTCfg()
+            sender = SENTSender(ctx, cfg, dut.send_in)
+            msg = b'Hello'
+            await sender.sent_message(msg)
+
+        sim = Simulator(dut)
+        sim.add_clock(1e-6)
+        sim.add_clock(3e-3, domain="sender")
+        sim.add_testbench(testbench_in)
+        # sim.add_testbench(testbench_out)
+        with sim.write_vcd("test.vcd"):
+            sim.run()
