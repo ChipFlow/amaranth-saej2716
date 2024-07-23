@@ -7,19 +7,10 @@ from typing import Callable
 from bitarray import bitarray
 from bitarray.util import ba2int, int2ba
 
-from amaranth import Signal, Elaboratable, Module
+from amaranth import Signal, ClockDomain, Fragment
 from amaranth.sim import Simulator, SimulatorContext
 
-# from ..amaranth_saej2716 import SENTReceiver
-
-
-class SENTReceiver(Elaboratable):
-    def __init__(self):
-        self.sent_input = Signal(1)
-
-    def elaborate(self):
-        m = Module()
-        return m
+from amaranth_saej2716 import SENTReceiver
 
 
 @dataclass
@@ -151,6 +142,8 @@ class SENTTestCase(unittest.TestCase):
             msg = b'Hello'
             await sender.sent_message(msg)
 
+        # m = Fragment.get(dut, platform=None).prepare().fragment
+        # m.domains.sender = ClockDomain()
         sim = Simulator(dut)
         sim.add_clock(1e-6)
         sim.add_clock(3e-3, domain="sender")
@@ -158,3 +151,7 @@ class SENTTestCase(unittest.TestCase):
         # sim.add_testbench(testbench_out)
         with sim.write_vcd("test.vcd"):
             sim.run()
+
+
+if __name__ == '__main__':
+    unittest.main()

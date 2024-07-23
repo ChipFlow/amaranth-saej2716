@@ -5,6 +5,7 @@ description = "Default template for PDM package"
 authors = [
     {name = "Rob Taylor", email = "rob.taylor@chipflow.io"},
 ]
+
 dependencies = [
     "amaranth-soc>=0",
     "amaranth @ git+https://github.com/amaranth-lang/amaranth",
@@ -12,10 +13,13 @@ dependencies = [
     "ok-dmrlib @ git+https://github.com/OK-DMR/ok-dmrlib",
     "bitarray>=2.9.2",
 ]
+
 requires-python = "==3.12.*"
 readme = "README.md"
 license = {text = "MIT"}
 
-
 [tool.pdm]
 distribution = false
+
+[tool.pdm.scripts]
+test.cmd = "python -m unittest"
